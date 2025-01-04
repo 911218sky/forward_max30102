@@ -9,10 +9,16 @@
     value: 0,
     status: "normal",
   };
+  let hasFingerContact = false;
 
   onMount(() => {
     const unsubscribe = wsService.subscribe((data) => {
+      if ("status" in data && data.status === "no_finger") {
+        hasFingerContact = false;
+        return;
+      }
       if (!("spO2" in data)) return;
+      hasFingerContact = true;
       oxygenLevel = {
         value: Math.round(data.spO2 * 10) / 10,
         status: determineStatus(data.spO2),
@@ -30,19 +36,28 @@
 
 <div class="oxygen-monitor" transition:fade>
   <div class="circle-wrapper">
-    <div class="outer-circle" style="border-color: {statusColor}">
+    <div class="outer-circle" style="border-color: {hasFingerContact ? statusColor : '#ff4444'}">
       <div class="inner-circle">
-        <div class="value-display">
-          <span class="value">{oxygenLevel.value}</span>
-          <span class="unit">%</span>
-        </div>
-        <span class="label">SpO₂</span>
-        <div class="status" style="color: {statusColor}">
-          {statusText}
-        </div>
+        {#if hasFingerContact}
+          <div class="value-display">
+            <span class="value">{oxygenLevel.value}</span>
+            <span class="unit">%</span>
+          </div>
+          <span class="label">SpO₂</span>
+          <div class="status" style="color: {statusColor}">
+            {statusText}
+          </div>
+        {:else}
+          <div class="no-signal">
+            <span class="error-text">No Finger Detected</span>
+            <span class="hint">Please place your finger on the sensor</span>
+          </div>
+        {/if}
       </div>
     </div>
-    <div class="pulse-ring" style="border-color: {statusColor}"></div>
+    {#if hasFingerContact}
+      <div class="pulse-ring" style="border-color: {statusColor}"></div>
+    {/if}
   </div>
 </div>
 
@@ -122,6 +137,25 @@
     font-size: 1em;
     font-weight: 500;
     transition: color 0.3s ease;
+  }
+
+  .no-signal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .error-text {
+    font-size: 1.5em;
+    color: #ff4444;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+
+  .hint {
+    font-size: 0.9em;
+    color: #888;
   }
 
   .pulse-ring {

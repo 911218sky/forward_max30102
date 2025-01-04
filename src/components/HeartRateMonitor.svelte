@@ -7,6 +7,7 @@
   let chartElement: HTMLElement;
   let bpm = 0;
   let signalQuality = 0;
+  let hasFingerContact = false;
   
   // 減少數據點數量
   const INITIAL_DATA_POINTS = 30;
@@ -112,11 +113,27 @@
     const bufferInterval = setInterval(processBuffer, BUFFER_INTERVAL);
 
     const unsubscribe = wsService.subscribe((data) => {
+      if ("status" in data && data.status === "no_finger") {
+        hasFingerContact = false;
+        chart?.updateOptions({
+          stroke: {
+            colors: ["#ff0000"]
+          }
+        });
+        return;
+      }
       if (!("hr" in data) || !("hrQuality" in data)) return;
+      hasFingerContact = true;
+      chart?.updateOptions({
+        stroke: {
+          colors: ["#00ff00"]
+        }
+      });
       const newBpm = Math.round(data.hr * 10) / 10;
+      signalQuality = data.hrQuality;
+
       if (newBpm >= 40 && newBpm <= 180) {
         bpm = newBpm;
-        signalQuality = data.hrQuality;
         dataBuffer.push(newBpm);
         if (dataBuffer.length >= BUFFER_SIZE) {
           processBuffer();
@@ -139,8 +156,13 @@
   <div class="monitor-header">
     <h2>Heart Rate Monitor</h2>
     <div class="stats">
-      <span class="bpm">{bpm} BPM</span>
-      <span class="quality">Signal: {Math.round(signalQuality * 100)}%</span>
+      {#if hasFingerContact}
+        <span class="bpm">{bpm} BPM</span>
+        <span class="quality">Signal: {Math.round(signalQuality * 100)}%</span>
+      {:else}
+        <span class="no-signal">No Finger Detected</span>
+        <span class="hint">Please place your finger on the sensor</span>
+      {/if}
     </div>
   </div>
   <div bind:this={chartElement}></div>
@@ -178,6 +200,18 @@
     font-size: 0.8em;
     opacity: 0.7;
     color: #fff;
+  }
+
+  .no-signal {
+    font-size: 1.2em;
+    color: #ff4444;
+    font-weight: bold;
+  }
+
+  .hint {
+    font-size: 0.8em;
+    color: #888;
+    margin-top: 4px;
   }
 
   h2 {
