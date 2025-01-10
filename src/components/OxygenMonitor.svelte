@@ -2,23 +2,27 @@
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { wsService } from "../services/websocketService";
-  import type { OxygenLevel } from "../types";
   import { determineStatus, STATUS_COLORS, STATUS_TEXTS } from "../utils";
+
+  import type { OxygenLevel } from "../types";
 
   let oxygenLevel: OxygenLevel = {
     value: 0,
-    status: "normal",
+    status: "no_finger",
   };
-  let hasFingerContact = false;
 
   onMount(() => {
     const unsubscribe = wsService.subscribe((data) => {
-      if ("status" in data && data.status === "no_finger") {
-        hasFingerContact = false;
-        return;
+      if ("status" in data) {
+        oxygenLevel = {
+          value: 0,
+          status: data.status
+        };
+        if (data.status === "no_finger" || data.status === "measuring") {
+          return;
+        }
       }
       if (!("spO2" in data)) return;
-      hasFingerContact = true;
       oxygenLevel = {
         value: Math.round(data.spO2 * 10) / 10,
         status: determineStatus(data.spO2),
@@ -36,9 +40,19 @@
 
 <div class="oxygen-monitor" transition:fade>
   <div class="circle-wrapper">
-    <div class="outer-circle" style="border-color: {hasFingerContact ? statusColor : '#ff4444'}">
+    <div class="outer-circle" style="border-color: {oxygenLevel.status === 'no_finger' ? '#ff4444' : statusColor}">
       <div class="inner-circle">
-        {#if hasFingerContact}
+        {#if oxygenLevel.status === 'no_finger'}
+          <div class="no-signal">
+            <span class="error-text">No Finger Detected</span>
+            <span class="hint">Please place your finger on the sensor</span>
+          </div>
+        {:else if oxygenLevel.status === 'measuring'}
+          <div class="measuring">
+            <span class="measuring-text">Measuring...</span>
+            <span class="hint">Please keep your finger still</span>
+          </div>
+        {:else}
           <div class="value-display">
             <span class="value">{oxygenLevel.value}</span>
             <span class="unit">%</span>
@@ -47,15 +61,10 @@
           <div class="status" style="color: {statusColor}">
             {statusText}
           </div>
-        {:else}
-          <div class="no-signal">
-            <span class="error-text">No Finger Detected</span>
-            <span class="hint">Please place your finger on the sensor</span>
-          </div>
         {/if}
       </div>
     </div>
-    {#if hasFingerContact}
+    {#if oxygenLevel.status !== 'no_finger'}
       <div class="pulse-ring" style="border-color: {statusColor}"></div>
     {/if}
   </div>
@@ -139,18 +148,25 @@
     transition: color 0.3s ease;
   }
 
-  .no-signal {
+  .no-signal, .measuring {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
   }
 
-  .error-text {
+  .error-text, .measuring-text {
     font-size: 1.5em;
-    color: #ff4444;
     font-weight: bold;
     margin-bottom: 8px;
+  }
+
+  .error-text {
+    color: #ff4444;
+  }
+
+  .measuring-text {
+    color: #ffa500;
   }
 
   .hint {

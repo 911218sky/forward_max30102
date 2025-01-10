@@ -1,6 +1,4 @@
-import type { SensorData } from '../types';
-
-type WSDataCallback = (data: SensorData) => void;
+import type { WSDataCallback } from './types';
 
 class WebSocketService {
   private ws: WebSocket | null = null;
