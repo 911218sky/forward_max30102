@@ -1,3 +1,5 @@
+export type MonitorState = "no_finger" | "measuring" | "active";
+
 export interface SensorData {
   spO2: number;
   hr: number;

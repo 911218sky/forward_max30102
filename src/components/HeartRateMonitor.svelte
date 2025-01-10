@@ -4,19 +4,24 @@
   import { wsService } from "../services/websocketService";
   import { HEART_RATE_CHART_COLORS as CHART_COLORS} from "../utils";
 
+  import type { MonitorState } from "../types";
+  
+  // Chart instance and DOM element reference
   let chart: ApexCharts | undefined;
   let chartElement: HTMLElement;
-  let bpm = 0;
-  let signalQuality = 0;
-  let hasFingerContact = false;
-  let isMeasuring = false;
   
+  // Monitor state and stats
+  let state: MonitorState = "no_finger";
+  let stats = {
+    bpm: 0,
+    signalQuality: 0
+  };
+  
+  // Initial chart data configuration
   const INITIAL_DATA_POINTS = 30;
   let dataPoints = Array(INITIAL_DATA_POINTS).fill(0);
   
-  const UPDATE_INTERVAL_MS = 25; 
-  let lastUpdateTime = Date.now();
-  
+  // Y-axis range configuration
   let yAxisMin = 40;
   let yAxisMax = 80;
   const Y_AXIS_PADDING = 5;
@@ -62,10 +67,12 @@
     theme: { mode: "dark" },
   };
 
+  // Data smoothing buffer configuration
   let dataBuffer: number[] = [];
   const BUFFER_SIZE = 5;
   const BUFFER_INTERVAL = 100;
 
+  // Process buffered data points to smooth the chart
   function processBuffer() {
     if (dataBuffer.length === 0) return;
     const avgValue = dataBuffer.reduce((sum, val) => sum + val, 0) / dataBuffer.length;
@@ -73,11 +80,11 @@
     dataBuffer = [];
   }
 
+  // Update chart with new heart rate value
   function updateChart(newValue: number) {
     const now = Date.now();
-    if (now - lastUpdateTime < UPDATE_INTERVAL_MS) return;
-    lastUpdateTime = now;
 
+    // Adjust Y-axis range if value is near boundaries
     if (newValue < yAxisMin + Y_AXIS_PADDING || newValue > yAxisMax - Y_AXIS_PADDING) {
       yAxisMin = Math.max(40, Math.min(...dataPoints, newValue) - Y_AXIS_PADDING);
       yAxisMax = Math.min(180, Math.max(...dataPoints, newValue) + Y_AXIS_PADDING);
@@ -101,6 +108,7 @@
     }]);
   }
 
+  // Update chart line color based on monitor state
   function updateChartColor(color: string) {
     chart?.updateOptions({
       stroke: {
@@ -109,35 +117,42 @@
     });
   }
 
+  // Component initialization and WebSocket subscription
   onMount(() => {
+    // Initialize and render the chart
     chart = new ApexCharts(chartElement, chartOptions);
     chart.render();
 
     const bufferInterval = setInterval(processBuffer, BUFFER_INTERVAL);
 
+    // Subscribe to WebSocket data updates
     const unsubscribe = wsService.subscribe((data) => {
+      // Handle sensor status changes
       if ("status" in data) {
         if (data.status === "no_finger") {
-          hasFingerContact = false;
-          isMeasuring = false;
+          state = "no_finger";
           updateChartColor(CHART_COLORS.noFinger);
           return;
         } else if (data.status === "measuring") {
-          hasFingerContact = true;
-          isMeasuring = true;
+          state = "measuring";
           updateChartColor(CHART_COLORS.measuring);
           return;
         }
       }
+      
+      // Validate heart rate data
       if (!("hr" in data) || !("hrQuality" in data)) return;
-      hasFingerContact = true;
-      isMeasuring = false;
+      
+      state = "active";
       updateChartColor(CHART_COLORS.active);
+      
+      // Process new heart rate reading
       const newBpm = Math.round(data.hr * 10) / 10;
-      signalQuality = data.hrQuality;
+      stats.signalQuality = data.hrQuality;
 
+      // Only accept readings within valid range (40-180 BPM)
       if (newBpm >= 40 && newBpm <= 180) {
-        bpm = newBpm;
+        stats.bpm = newBpm;
         dataBuffer.push(newBpm);
         if (dataBuffer.length >= BUFFER_SIZE) {
           processBuffer();
@@ -145,6 +160,7 @@
       }
     });
 
+    // Cleanup on component destruction
     return () => {
       clearInterval(bufferInterval);
       unsubscribe();
@@ -160,15 +176,15 @@
   <div class="monitor-header">
     <h2>Heart Rate Monitor</h2>
     <div class="stats">
-      {#if !hasFingerContact}
+      {#if state === "no_finger"}
         <span class="no-signal">No Finger Detected</span>
         <span class="hint">Please place your finger on the sensor</span>
-      {:else if isMeasuring}
+      {:else if state === "measuring"}
         <span class="measuring">Measuring...</span>
         <span class="hint">Please keep your finger still</span>
       {:else}
-        <span class="bpm">{bpm} BPM</span>
-        <span class="quality">Signal: {Math.round(signalQuality * 100)}%</span>
+        <span class="bpm">{stats.bpm} BPM</span>
+        <span class="quality">Signal: {Math.round(stats.signalQuality * 100)}%</span>
       {/if}
     </div>
   </div>
